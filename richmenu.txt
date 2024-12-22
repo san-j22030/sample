@@ -1,0 +1,162 @@
+const ACCESS_TOKEN = 'ここにチャネルアクセストークン';
+const defaultMenuImage = 'ここに共通のリッチメニュー画面の画像のURL';
+const userMenuImage = 'ここにユーザ別のリッチメニュー画面の画像のURL';
+
+const createDefaultMenu = () => { //全ユーザに共通して表示されるリッチメニューの作成
+  const payload = { //リッチメニューの構成
+    size: {
+      width: 1200, //リッチメニューの幅
+      height: 810  //リッチメニューの高さ
+    },
+    selected: true,
+    name: '新規登録/ログイン',
+    chatBarText: "ここをタッチ",
+    areas: [
+	    {
+		    bounds: { x: 0, y: 0, width: 600, height: 810 },
+		    action: { type: "message", text: "新規登録"}
+	    },
+	    {
+		    bounds: { x: 600, y: 0, width: 600, height: 810 },
+		    action: { type: "message", text: "ログイン"}
+	    }
+    ]
+  };
+
+  const richMenuId = createRichmenu(payload);
+  uploadRichMenuImage(richMenuId,defaultMenuImage);
+  linkRichMenuToUser('all',richMenuId); //第一引数に「all」と指定することで、
+                                        //このリッチメニューが全ユーザに共通して表示されるようにする
+}
+
+const createUserMenu = (userId) => {  //ユーザ別で表示されるリッチメニューの作成
+  const payload = { //リッチメニューの構成
+    size: {
+      width: 1200, //リッチメニューの幅
+      height: 810  //リッチメニューの高さ
+    },
+    selected: true,
+    name: userId,
+    chatBarText: "ここをタッチ",
+    areas: [
+	    {
+		    bounds: { x: 0, y: 0, width: 600, height: 810 },
+		    action: { type: "message", text: "ユーザID：" + userId}
+	    },
+	    {
+		    bounds: { x: 600, y: 0, width: 600, height: 810 },
+		    action: { type: "message", text: "ログアウト"}
+	    }
+    ]
+  };
+
+  const richMenuId = createRichmenu(payload);
+  uploadRichMenuImage(richMenuId,userMenuImage);
+  linkRichMenuToUser(userId,richMenuId);
+  addUser(userId,richMenuId);
+}
+
+const addUser = (userid, richMenuId) => { //新規ユーザをユーザ表に追加
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('user_table');
+  const lastRow = sheet.getLastRow();
+
+  sheet.getRange(lastRow+1,1).setValue(userid);
+  sheet.getRange(lastRow+1,2).setValue(richMenuId);
+}
+
+const createRichmenu = (payload) => { //リッチメニューの構成情報を引数として受け取り、リッチメニューを作成
+  const url = 'https://api.line.me/v2/bot/richmenu'; //新しくリッチメニューを作成するためのURL
+
+  const options = { //apiに接続するための設定
+    method: 'post',
+    headers: {
+      'Authorization': 'Bearer ' + ACCESS_TOKEN,
+      'Content-Type': 'application/json'
+    },
+    payload: JSON.stringify(payload)
+  };
+
+  const response = UrlFetchApp.fetch(url, options); //リッチメニューを作成。返り値を受け取る
+
+  const richMenuId = JSON.parse(response.getContentText()).richMenuId;  //返り値の中から作成したリッチメニューのIDを取り出す
+
+  return richMenuId;  //作成したリッチメニューのIDを返り値として返す
+}
+
+const uploadRichMenuImage = (richMenuId,imageUrl) => { //リッチメニューの画像をアップロード
+  const url = 'https://api-data.line.me/v2/bot/richmenu/'+ richMenuId +'/content'; //リッチメニューの画像を
+                                                                                    //アップロードするためのURL
+
+  const image = UrlFetchApp.fetch(imageUrl).getBlob(); //リッチメニューを表示するための画像をダウンロード
+
+  const options = {
+    method: 'post',
+    headers: {
+      'Authorization': 'Bearer ' + ACCESS_TOKEN,
+      'Content-Type': 'image/png'
+    },
+    payload: image.getBytes()
+  };
+  
+  UrlFetchApp.fetch(url, options);  //画像をアップロード(これによりリッチメニューを表示できるようになる)
+}
+
+const linkRichMenuToUser = (userId, richMenuId) => { //引数で指定したリッチメニューとユーザをリンクさせる
+  const url = 'https://api.line.me/v2/bot/user/' + userId +'/richmenu/' + richMenuId; //指定したリッチメニューとユーザを
+                                                                                      //リンクさせるためのURL
+
+  const options = {
+    method: 'post',
+    headers: {
+      'Authorization': 'Bearer ' + ACCESS_TOKEN
+    }
+  };
+
+  UrlFetchApp.fetch(url, options);  //リッチメニューとユーザをリンク
+                                    //(これにより指定したリッチメニューを、指定したユーザの画面に表示させる)
+
+  return true;
+}
+
+const disconnectionRichMenuToUser = (userId) => { //引数で指定したユーザとリッチメニューのリンクを切断する
+  const url = 'https://api.line.me/v2/bot/user/' + userId +'/richmenu'; //指定したユーザとリッチメニューの
+                                                                        //リンクを切断するためのURL
+
+  const options = {
+    method: 'delete',
+    headers: {
+      'Authorization': 'Bearer ' + ACCESS_TOKEN
+    }
+  };
+
+  UrlFetchApp.fetch(url, options);  //リッチメニューとユーザのリンクを切断
+                                    //(これによりユーザの画面に表示されているリッチメニューが消える)
+                                    //(ただし全ユーザ共通のリッチメニューを設定している場合はそちらに切り替わる)
+}
+
+const confirmRichMenuList = () => { //リッチメニューの一覧を表示
+  const url = 'https://api.line.me/v2/bot/richmenu/list'; //リッチメニューの一覧を表示するためのURL
+
+  const options = {
+    method: 'get',
+    headers: {
+      'Authorization': 'Bearer ' + ACCESS_TOKEN
+    },
+  };
+
+  const response = UrlFetchApp.fetch(url, options); //リッチメニューの一覧を返り値として受け取る
+  Logger.log(response.getContentText());  //リッチメニューの一覧をを表示する
+}
+
+const deleteRichMenu = (richMenuId) => { //リッチメニューを指定して削除
+  const url = 'https://api.line.me/v2/bot/richmenu/' + richMenuId;
+
+  const options = {
+    method: 'delete',
+    headers: {
+      'Authorization': 'Bearer ' + ACCESS_TOKEN
+    },
+  };
+
+  UrlFetchApp.fetch(url, options);  //指定したリッチメニューを削除する
+}
