@@ -1,0 +1,64 @@
+const doPost = (e) => { //ユーザからのメッセージを受け取った際の処理
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('post_log'); //ログを書き込むシートを指定
+  const currentDate = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+                                                                                            //今日の日付を入手
+  const json = JSON.parse(e.postData.contents); //メッセージの中のJSON形式のデータを処理可能な形に変換
+
+  const userId = json.events[0].source.userId;  //送信者のユーザID(LINE_ID)
+  const reply_token = json.events[0].replyToken;  //メッセージに応答するためのトークン
+  const messageId = json.events[0].message.id;  //メッセージID
+  const messageType = json.events[0].message.type;  //メッセージの種類
+  const messageText = json.events[0].message.text;  //メッセージテキストの内容
+
+  //メッセージの内容をログとして書き起こす
+  sheet.appendRow([currentDate]);
+  sheet.appendRow(["'=== START ==="]);
+  sheet.appendRow(['userId',userId]);
+  sheet.appendRow(['json',json]);
+  sheet.appendRow(['messageId',messageId]);
+  sheet.appendRow(['messageType',messageType]);
+  sheet.appendRow(['messageText',messageText]);
+  sheet.appendRow(["'=== END ==="]);
+
+  if (typeof reply_token === 'underfined') {  //応答トークンの値がない場合は終了する
+    return;
+  }
+
+  //メッセージテキストの内容に応じて処理を分岐
+  if(messageText == '新規登録'){  //「新規登録」なら、ユーザの新規登録処理を行う
+    if(confirmUser(userId) == 'none'){  //ユーザが登録されていなければユーザを登録する
+      createUserMenu(userId); //ユーザを登録
+      sendLineMessage(userId,'ユーザを登録しました'); //ユーザ登録が完了したことを表すメッセージを送信
+    }else{ //すでにユーザが登録されている場合
+      sendLineMessage(userId,'既にユーザが登録されています'); //ユーザ登録がすでに登録されていることを表すメッセージを送信
+    }
+  }else if(messageText == 'ログイン'){  //「ログイン」なら、ログイン処理を行う
+    const richMenuId = confirmUser(userId); //ユーザ表を確認し、リッチメニューIDを入手
+    if(richMenuId != 'none'){ //ユーザが登録されていれば(confirmUser()の返り値が「none」でなければ)
+                              //ユーザとリッチメニューをリンクさせる
+      linkRichMenuToUser(userId,richMenuId);  //ユーザとリッチメニューをリンク
+      sendLineMessage(userId,'ログインしました'); //ログインが完了したことを表すメッセージを送信
+    }else{  //ユーザが登録されていない場合
+      sendLineMessage(userId,'ユーザが登録されていません'); //ユーザ登録が登録されていないことを表すメッセージを送信
+    }
+  }else if(messageText == 'ログアウト'){  //「ログアウト」なら、ログアウト処理を行う
+    if(confirmUser(userId) != 'none'){  //ユーザが登録されていればユーザとリッチメニューのリンクを解除する
+      disconnectionRichMenuToUser(userId);  //ユーザとリッチメニューのリンクを解除
+      sendLineMessage(userId,'ログアウトしました'); //ログアウトが完了したことを表すメッセージを送信
+    }else{
+      sendLineMessage(userId,'エラーが発生しました'); //ログアウトが失敗したことを表すメッセージを送信
+    }
+  }
+}
+
+const confirmUser = (userId) => { //引数で指定されたユーザが登録されているかどうかを確認
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('user_table'); //ユーザ情報があるシートを指定
+
+  for(let i = 0; i < sheet.getLastRow()-1; i++){
+    if(sheet.getRange(2+i,1).getValue() == userId){
+      return sheet.getRange(2+i,2).getValue();  //指定されたユーザのリッチメニューIDを返す
+    }
+  }
+
+  return 'none';  //ユーザが登録されていないことを表すメッセージを返す
+}
